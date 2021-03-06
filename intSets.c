@@ -290,4 +290,3 @@ complex_abs_cmp(PG_FUNCTION_ARGS)
 
     PG_RETURN_INT32(complex_abs_cmp_internal(a, b));
 }
-
