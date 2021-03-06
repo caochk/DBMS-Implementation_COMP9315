@@ -23,6 +23,10 @@ typedef struct intSets
     int isets[FLEXIBLE_ARRAY_MEMBER];
 } intSets;
 
+static int valid_intSets(char *str){
+
+}
+
 
 /*****************************************************************************
  * Input/Output functions
@@ -33,7 +37,7 @@ PG_FUNCTION_INFO_V1(intsets_in);
 Datum
 intsets_in(PG_FUNCTION_ARGS)
 {
-    int	   *str = PG_GETARG_CSTRING(0);
+    char	  *str = PG_GETARG_CSTRING(0);
     intSets   *result;
 
     int length = strlen(str) + 1; // define the length of intSets, including the length of '\0'
