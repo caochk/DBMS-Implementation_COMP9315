@@ -23,6 +23,7 @@ PG_MODULE_MAGIC;
 
 typedef struct intSets
 {
+    int32 numOfIntegers; //还没完全搞懂应该用哪种int型
     int isets[FLEXIBLE_ARRAY_MEMBER];
 } intSets;
 
@@ -51,11 +52,9 @@ static int length_of_intSetsString(char *str){
     return numOfNonBlankCharacters;
 }
 
-static char *remove_spaces(char *str, int lengthOfIntSetsString){
-//    int lengthOfString = numOfNonBlankCharacters;
-    char intSetsString[lengthOfIntSetsString] = {0};
+static char *remove_spaces(char *str, int lengthOfIntSetsString, char *intSetsString){
     char *p = intSetsString;
-
+    intSetsString[lengthOfIntSetsString] = '\0';
     while (*str != '\0'){
         if (*str != ' '){
             *p = *str;
@@ -76,24 +75,33 @@ static void remove_braces(char intSetsString[], char targetCharacter){
     intSetsString[j]='\0';
 }
 
-static int * transform_intSetsString_to_intSetsArray(char *intSetsString, int lengthOfIntSetsString){
-    char *iSetsStrtingTemp=(char *)malloc(lengthOfIntSetsString+1);
+static int num_of_integers(char *intSetsString, int count){
+    while (*intSetsString != '\0'){
+        if (*intSetsString == ','){
+            count++;
+        }
+        intSetsString++;
+    }
+    return count;
+}
+
+static int * transform_intSetsString_to_intSetsArray(char *intSetsString, int lengthOfIntSetsString, int numOfIntegers, int *intSets){
+    char *iSetsStrtingTemp=(char *)malloc(lengthOfIntSetsString+1); //change to palloc
     snprintf(iSetsStrtingTemp, lengthOfIntSetsString+1, "%s", intSetsString);
     char *element;
     char *remaingElements;
-    int intSets[lengthOfIntSetsString - 2];
     int i = 1;
 
     element = strtok_r(iSetsStrtingTemp, ",", &remaingElements);
     sscanf(element, "%d", intSets);
     while(element != NULL) {
-//        printf("ptr=%s\n",ptr);
         element = strtok_r(NULL, ",", &remaingElements);
         if (element != NULL) {
             sscanf(element, "%d", intSets + i);
             i++;
         }
     }
+    free(iSetsStrtingTemp); // free() is unnecessary due to palloc()
     return intSets;
 }
 
@@ -122,10 +130,15 @@ intsets_in(PG_FUNCTION_ARGS)
     SET_VARSIZE(result,VARHDRSZ+length);
 
     int lengthOfIntSetsString = length_of_intSetsString(str);
-    char *intSetsString = remove_spaces(str, lengthOfIntSetsString);
+    char intSetsString[lengthOfIntSetsString+1];
+    remove_spaces(str, lengthOfIntSetsString, intSetsString);
     remove_braces(intSetsString, '{');
     remove_braces(intSetsString, '}');
-    result->isets = transform_intSetsString_to_intSetsArray(intSetsString, lengthOfIntSetsString); //把字符串类型的intSets转换为真正的整数数组类型（即intSets的内部表示形式）
+    int numOfIntegers = 1;
+    numOfIntegers = num_of_integers(intSetsString, numOfIntegers);
+    result->numOfIntegers = numOfIntegers;
+    int intSets[numOfIntegers];
+    result->isets = transform_intSetsString_to_intSetsArray(intSetsString, lengthOfIntSetsString, numOfIntegers, intSets); //把字符串类型的intSets转换为真正的整数数组类型（即intSets的内部表示形式）
 
     PG_RETURN_POINTER(result);
 }
@@ -133,12 +146,14 @@ intsets_in(PG_FUNCTION_ARGS)
 PG_FUNCTION_INFO_V1(insets_out);
 
 Datum
-insets_out(PG_FUNCTION_ARGS)
+insets_out(PG_FUNCTION_ARGS) // not completed
 {
-    intSets   *isets = (intSets *) PG_GETARG_POINTER(0);
-    char	   *result;
+    intSets   *intSets = (intSets *) PG_GETARG_POINTER(0);
+    char	  *result;
 
-    result = psprintf("%s", isets->isets);
+    int sizeOfIntSets = sizeof(intSets->isets);//尚未完成：不知道如何将整数数组中的元素一个个拿出来变成字符串（利用itoa()函数）->然后拼接字符串->最后赋给result |||或者有没有直接将整个整数数组转换为字符串数组
+
+
     PG_RETURN_CSTRING(result);
 }
 
@@ -151,7 +166,7 @@ insets_out(PG_FUNCTION_ARGS)
 PG_FUNCTION_INFO_V1(complex_recv);
 
 Datum
-complex_recv(PG_FUNCTION_ARGS)
+complex_recv(PG_FUNCTION_ARGS) // **no need to implement**
 {
     StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
     Complex    *result;
@@ -165,7 +180,7 @@ complex_recv(PG_FUNCTION_ARGS)
 PG_FUNCTION_INFO_V1(complex_send);
 
 Datum
-complex_send(PG_FUNCTION_ARGS)
+complex_send(PG_FUNCTION_ARGS) // **no need to implement**
 {
     Complex    *complex = (Complex *) PG_GETARG_POINTER(0);
     StringInfoData buf;
@@ -181,59 +196,33 @@ complex_send(PG_FUNCTION_ARGS)
  *
  * A practical Complex datatype would provide much more than this, of course.
  *****************************************************************************/
-
-PG_FUNCTION_INFO_V1(complex_add);
+// Operator: ?
+PG_FUNCTION_INFO_V1(intsets_contain);
 
 Datum
-complex_add(PG_FUNCTION_ARGS)
+intsets_contain(PG_FUNCTION_ARGS) //完成【尚未验证】
 {
-    Complex    *a = (Complex *) PG_GETARG_POINTER(0);
-    Complex    *b = (Complex *) PG_GETARG_POINTER(1);
-    Complex    *result;
+    int         a = (int) PG_GETARG_POINTER(0); //写法存疑！！！！！！！！！！！
+    intSets   *b = (intSets *) PG_GETARG_POINTER(1);
 
-    result = (Complex *) palloc(sizeof(Complex));
-    result->x = a->x + b->x;
-    result->y = a->y + b->y;
+    int result = FALSE;
+    for (int i = 0; i < b->numOfIntegers; ++i) {
+        if (a == b->isets[i]){
+            result = TRUE;
+        }
+    }
     PG_RETURN_POINTER(result);
 }
 
-
-/*****************************************************************************
- * Operator class for defining B-tree index
- *
- * It's essential that the comparison operators and support function for a
- * B-tree index opclass always agree on the relative ordering of any two
- * data values.  Experience has shown that it's depressingly easy to write
- * unintentionally inconsistent functions.  One way to reduce the odds of
- * making a mistake is to make all the functions simple wrappers around
- * an internal three-way-comparison function, as we do here.
- *****************************************************************************/
-
-#define Mag(c)	((c)->x*(c)->x + (c)->y*(c)->y)
-
-static int
-complex_abs_cmp_internal(Complex * a, Complex * b)
-{
-    double		amag = Mag(a),
-            bmag = Mag(b);
-
-    if (amag < bmag)
-        return -1;
-    if (amag > bmag)
-        return 1;
-    return 0;
-}
-
-
-PG_FUNCTION_INFO_V1(complex_abs_lt);
+//Operator: #
+PG_FUNCTION_INFO_V1(intsets_cardinality);
 
 Datum
-complex_abs_lt(PG_FUNCTION_ARGS)
+intsets_cardinality(PG_FUNCTION_ARGS) //完成【尚未验证】
 {
-    Complex    *a = (Complex *) PG_GETARG_POINTER(0);
-    Complex    *b = (Complex *) PG_GETARG_POINTER(1);
+    intSets   *a = (intSets *) PG_GETARG_POINTER(0);
 
-    PG_RETURN_BOOL(complex_abs_cmp_internal(a, b) < 0);
+    PG_RETURN_INT32(a->numOfIntegers);
 }
 
 PG_FUNCTION_INFO_V1(complex_abs_le);
@@ -290,3 +279,4 @@ complex_abs_cmp(PG_FUNCTION_ARGS)
 
     PG_RETURN_INT32(complex_abs_cmp_internal(a, b));
 }
+
