@@ -239,18 +239,18 @@ static int *sets_intersection(intSets *A, intSets *B, int *resultSet){
     return resultSet;
 }
 
-static int *sets_union(intSets *A, intSets *B, int *resultSet){
-    int k = 0;
-    for (int i = 0; i < A->numOfIntegers; ++i) {
-        for (int j = 0; j < B->numOfIntegers; ++j) {
-            if (A->isets[i] == B->isets[j]){
-                resultSet[k] = A->isets[i];
-                k++;
-            }
-        }
-    }
-    return resultSet;
-}
+//static int *sets_union(intSets *A, intSets *B, int *resultSet){
+//    int k = 0;
+//    for (int i = 0; i < A->numOfIntegers; ++i) {
+//        for (int j = 0; j < B->numOfIntegers; ++j) {
+//            if (A->isets[i] == B->isets[j]){
+//                resultSet[k] = A->isets[i];
+//                k++;
+//            }
+//        }
+//    }
+//    return resultSet;
+//}
 
 static int *sets_difference(intSets *A, intSets *B, int *resultSet){
     int count = 0;
@@ -391,7 +391,7 @@ intsets_union(PG_FUNCTION_ARGS)
     int lengthOfDifferenceSet = A->numOfIntegers - numOfSameElements;
     int differenceSet[lengthOfDifferenceSet];
     int *resultTemp;
-    resultTemp = sets_intersection(A, B, differenceSet);//resultTemp数组存的是差集
+    resultTemp = sets_difference(A, B, differenceSet);//resultTemp数组存的是差集
 
 
     int lengthOfResultSet = A->numOfIntegers - numOfSameElements + B->numOfIntegers;
@@ -402,7 +402,7 @@ intsets_union(PG_FUNCTION_ARGS)
         resultSet[i] = B->isets[i];
     }
     for (int i = 0; i < lengthOfDifferenceSet; ++i) {
-        resultSet[B->numOfIntegers+1+i] = differenceSet[i];
+        resultSet[B->numOfIntegers+i] = differenceSet[i];
     }
     result->isets = resultSet;
 
@@ -410,13 +410,37 @@ intsets_union(PG_FUNCTION_ARGS)
 }
 
 //Operator: ！！
-PG_FUNCTION_INFO_V1(intsets_disjunction);
+PG_FUNCTION_INFO_V1(intsets_disjunction);  //完成【尚未验证】
 
 Datum
 intsets_disjunction(PG_FUNCTION_ARGS)
 {
     intSets   *A = (intSets *) PG_GETARG_POINTER(0);
     intSets   *B = (intSets *) PG_GETARG_POINTER(1);
+    intSets *result;
+
+    int numOfSameElements = num_of_same_elements(A, B);
+    int lengthOfResultSet1 = A->numOfIntegers - numOfSameElements;
+    int lengthOfResultSet2 = B->numOfIntegers - numOfSameElements;
+    int differenceSet1[lengthOfResultSet1];
+    int differenceSet2[lengthOfResultSet2];
+    int *resultTemp1;
+    int *resultTemp2;
+    resultTemp1 = sets_difference(A, B, differenceSet1); //get (A-B)
+    resultTemp2 = sets_difference(A, B, differenceSet2); //get (B-A)
+
+    //to get (A-B)∪(B-A),∵(A-B)∪(B-A)=set disjunction
+    int resultSet[lengthOfResultSet1 + lengthOfResultSet2];
+    for (int i = 0; i < lengthOfResultSet1; ++i) {
+        resultSet[i] = resultTemp1[i];
+    }
+    for (int i = 0; i < lengthOfResultSet2; ++i) {
+        resultSet[lengthOfResultSet1+i] = resultTemp2[i];
+    }
+    result->numOfIntegers = lengthOfResultSet1 + lengthOfResultSet2;
+    result->isets = resultSet;
+
+    PG_RETURN_POINTER(result);
 }
 
 //Operator: -
@@ -432,7 +456,7 @@ intsets_difference(PG_FUNCTION_ARGS)
     int lengthOfResultSet = A->numOfIntegers - numOfSameElements;
     result->numOfIntegers = lengthOfResultSet;
     int resultSet[lengthOfResultSet];
-    result->isets = sets_intersection(A, B, resultSet);
+    result->isets = sets_difference(A, B, resultSet);
 
     PG_RETURN_POINTER(result);
 }
