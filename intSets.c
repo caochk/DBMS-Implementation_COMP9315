@@ -196,18 +196,92 @@ complex_send(PG_FUNCTION_ARGS) // **no need to implement**
  *
  * A practical Complex datatype would provide much more than this, of course.
  *****************************************************************************/
-// Operator: ?
-PG_FUNCTION_INFO_V1(intsets_contain);
-
-Datum
-intsets_contain(PG_FUNCTION_ARGS) //完成【尚未验证】
-{
-    int         a = (int) PG_GETARG_POINTER(0); //写法存疑！！！！！！！！！！！
-    intSets   *b = (intSets *) PG_GETARG_POINTER(1);
+static int intsets_inclusion(intSets *A, intSets *B){
+//    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
+//    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
 
     int result = FALSE;
-    for (int i = 0; i < b->numOfIntegers; ++i) {
-        if (a == b->isets[i]){
+    for (int i = 0; i < B->numOfIntegers; ++i) {
+        for (int j = 0; j < A->numOfIntegers; ++j) {
+            if (B->isets[i] == A->isets[j]){
+                result = TRUE;
+            }
+        }
+        if (result == FALSE){
+            break;
+        }
+    }
+    return result;
+}
+
+static int num_of_same_elements(intSets *A, intSets *B){
+    int numOfSameElements = 0;
+    for (int i = 0; i < A->numOfIntegers; ++i) {
+        for (int j = 0; j < B->numOfIntegers; ++j) {
+            if (A->isets[i] == B->isets[j]){
+                numOfSameElements++;
+            }
+        }
+    }
+    return numOfSameElements;
+}
+
+static int *sets_intersection(intSets *A, intSets *B, int *resultSet){
+    int k = 0;
+    for (int i = 0; i < A->numOfIntegers; ++i) {
+        for (int j = 0; j < B->numOfIntegers; ++j) {
+            if (A->isets[i] == B->isets[j]){
+                resultSet[k] = A->isets[i];
+                k++;
+            }
+        }
+    }
+    return resultSet;
+}
+
+static int *sets_union(intSets *A, intSets *B, int *resultSet){
+    int k = 0;
+    for (int i = 0; i < A->numOfIntegers; ++i) {
+        for (int j = 0; j < B->numOfIntegers; ++j) {
+            if (A->isets[i] == B->isets[j]){
+                resultSet[k] = A->isets[i];
+                k++;
+            }
+        }
+    }
+    return resultSet;
+}
+
+static int *sets_difference(intSets *A, intSets *B, int *resultSet){
+    int count = 0;
+    int k = 0;
+    for (int i = 0; i < A->numOfIntegers; ++i) {
+        for (int j = 0; j < B->numOfIntegers; ++j) {
+            if (A->isets[i] != B->isets[j]){
+                count++;
+            }
+        }
+        if (count == B->numOfIntegers){
+            resultSet[k] = A->isets[i];
+            k ++;
+        }
+        count = 0;
+    }
+    return resultSet;
+}
+
+// Operator: ?
+PG_FUNCTION_INFO_V1(intsets_contain); //完成【尚未验证】
+
+Datum
+intsets_contain(PG_FUNCTION_ARGS)
+{
+    int        i = (int) PG_GETARG_POINTER(0); //写法存疑！！！！！！！！！！！
+    intSets   *S = (intSets *) PG_GETARG_POINTER(1);
+
+    int result = FALSE;
+    for (int j = 0; j < S->numOfIntegers; ++j) {
+        if (i == S->isets[j]){
             result = TRUE;
         }
     }
@@ -215,68 +289,150 @@ intsets_contain(PG_FUNCTION_ARGS) //完成【尚未验证】
 }
 
 //Operator: #
-PG_FUNCTION_INFO_V1(intsets_cardinality);
+PG_FUNCTION_INFO_V1(intsets_cardinality); //完成【尚未验证】
 
 Datum
-intsets_cardinality(PG_FUNCTION_ARGS) //完成【尚未验证】
+intsets_cardinality(PG_FUNCTION_ARGS)
 {
-    intSets   *a = (intSets *) PG_GETARG_POINTER(0);
+    intSets   *S = (intSets *) PG_GETARG_POINTER(0);
 
-    PG_RETURN_INT32(a->numOfIntegers);
+    PG_RETURN_INT32(S->numOfIntegers);
 }
 
-PG_FUNCTION_INFO_V1(complex_abs_le);
+//Operator: >@
+PG_FUNCTION_INFO_V1(intsets_improper_superset); //完成【尚未验证】
 
 Datum
-complex_abs_le(PG_FUNCTION_ARGS)
+intsets_improper_superset(PG_FUNCTION_ARGS)
 {
-    Complex    *a = (Complex *) PG_GETARG_POINTER(0);
-    Complex    *b = (Complex *) PG_GETARG_POINTER(1);
+    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
+    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
 
-    PG_RETURN_BOOL(complex_abs_cmp_internal(a, b) <= 0);
+    PG_RETURN_INT32(intsets_inclusion(A, B));
 }
 
-PG_FUNCTION_INFO_V1(complex_abs_eq);
+//Operator: @<
+PG_FUNCTION_INFO_V1(intsets_improper_subset); //完成【尚未验证】
 
 Datum
-complex_abs_eq(PG_FUNCTION_ARGS)
+intsets_improper_subset(PG_FUNCTION_ARGS)
 {
-    Complex    *a = (Complex *) PG_GETARG_POINTER(0);
-    Complex    *b = (Complex *) PG_GETARG_POINTER(1);
+    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
+    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
 
-    PG_RETURN_BOOL(complex_abs_cmp_internal(a, b) == 0);
+    PG_RETURN_INT32(intsets_inclusion(B, A));
 }
 
-PG_FUNCTION_INFO_V1(complex_abs_ge);
+//Operator: =
+PG_FUNCTION_INFO_V1(intsets_eq); //完成【尚未验证】
 
 Datum
-complex_abs_ge(PG_FUNCTION_ARGS)
+intsets_eq(PG_FUNCTION_ARGS)
 {
-    Complex    *a = (Complex *) PG_GETARG_POINTER(0);
-    Complex    *b = (Complex *) PG_GETARG_POINTER(1);
+    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
+    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
 
-    PG_RETURN_BOOL(complex_abs_cmp_internal(a, b) >= 0);
+    int result1 = intsets_inclusion(A, B);
+    int result2 = intsets_inclusion(B, A);
+    int result = FALSE;
+    if (result1 == TRUE && result2 == TRUE){
+        result = TRUE;
+    }
+    PG_RETURN_INT32(result);
 }
 
-PG_FUNCTION_INFO_V1(complex_abs_gt);
+//Operator: <>
+PG_FUNCTION_INFO_V1(intsets_not_eq); //完成【尚未验证】
 
 Datum
-complex_abs_gt(PG_FUNCTION_ARGS)
+intsets_not_eq(PG_FUNCTION_ARGS)
 {
-    Complex    *a = (Complex *) PG_GETARG_POINTER(0);
-    Complex    *b = (Complex *) PG_GETARG_POINTER(1);
+    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
+    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
 
-    PG_RETURN_BOOL(complex_abs_cmp_internal(a, b) > 0);
+    int result = intsets_inclusion(A, B);
+//    int result2 = intsets_inclusion(B, A);
+//    int result = FALSE;
+//    if (result1 == FALSE && result2 == TRUE){
+//        result = TRUE;
+//    }
+    PG_RETURN_INT32(!result);
 }
 
-PG_FUNCTION_INFO_V1(complex_abs_cmp);
+//Operator: &&
+PG_FUNCTION_INFO_V1(intsets_intersection);
 
 Datum
-complex_abs_cmp(PG_FUNCTION_ARGS)
+intsets_intersection(PG_FUNCTION_ARGS)
 {
-    Complex    *a = (Complex *) PG_GETARG_POINTER(0);
-    Complex    *b = (Complex *) PG_GETARG_POINTER(1);
+    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
+    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
+    intSets *result;
+    int numOfSameElements = num_of_same_elements(A, B);
+    result->numOfIntegers = numOfSameElements;
+    int resultSet[numOfSameElements];
+    result->isets = sets_intersection(A, B, resultSet);
 
-    PG_RETURN_INT32(complex_abs_cmp_internal(a, b));
+    PG_RETURN_POINTER(result);
 }
 
+//Operator: ||
+PG_FUNCTION_INFO_V1(intsets_union); //完成【尚未验证】
+
+Datum
+intsets_union(PG_FUNCTION_ARGS)
+{
+    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
+    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
+    intSets *result;
+    int numOfSameElements = num_of_same_elements(A, B);
+
+    //先求差集
+    int lengthOfDifferenceSet = A->numOfIntegers - numOfSameElements;
+    int differenceSet[lengthOfDifferenceSet];
+    int *resultTemp;
+    resultTemp = sets_intersection(A, B, differenceSet);//resultTemp数组存的是差集
+
+
+    int lengthOfResultSet = A->numOfIntegers - numOfSameElements + B->numOfIntegers;
+    result->numOfIntegers = lengthOfResultSet;
+    //将差集与集合B合到一起便是并集
+    int resultSet[lengthOfResultSet];
+    for (int i = 0; i < B->numOfIntegers; ++i) {
+        resultSet[i] = B->isets[i];
+    }
+    for (int i = 0; i < lengthOfDifferenceSet; ++i) {
+        resultSet[B->numOfIntegers+1+i] = differenceSet[i];
+    }
+    result->isets = resultSet;
+
+    PG_RETURN_POINTER(result);
+}
+
+//Operator: ！！
+PG_FUNCTION_INFO_V1(intsets_disjunction);
+
+Datum
+intsets_disjunction(PG_FUNCTION_ARGS)
+{
+    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
+    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
+}
+
+//Operator: -
+PG_FUNCTION_INFO_V1(intsets_difference);  //完成【尚未验证】
+
+Datum
+intsets_difference(PG_FUNCTION_ARGS)
+{
+    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
+    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
+    intSets *result;
+    int numOfSameElements = num_of_same_elements(A, B);
+    int lengthOfResultSet = A->numOfIntegers - numOfSameElements;
+    result->numOfIntegers = lengthOfResultSet;
+    int resultSet[lengthOfResultSet];
+    result->isets = sets_intersection(A, B, resultSet);
+
+    PG_RETURN_POINTER(result);
+}
