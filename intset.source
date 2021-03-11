@@ -1,0 +1,105 @@
+-----------------------------
+-- Creating a new type:
+--	We are going to create a new type called 'isets' which represents
+--	sets.
+--	A user-defined type must have an input and an output function, and
+--	optionally can have binary input and output functions.  All of these
+--	are usually user-defined C functions.
+-----------------------------
+
+-- Assume the user defined functions are in _OBJWD_/intset$DLSUFFIX
+-- (we do not want to assume this is in the dynamic loader search path).
+-- Look at $PWD/intset.c for the source.  Note that we declare all of
+-- them as STRICT, so we do not need to cope with NULL inputs in the
+-- C code.  We also mark them IMMUTABLE, since they always return the
+-- same outputs given the same inputs.
+
+-- the input function 'intset_in' takes a null-terminated string (the
+-- textual representation of the type) and turns it into the internal
+-- (in memory) representation. 
+
+CREATE FUNCTION intset_in(cstring)            
+   RETURNS intSet
+   AS '_OBJWD_/intset'
+   LANGUAGE C IMMUTABLE STRICT;
+
+-- the output function 'intset_out' takes the internal representation and
+-- converts it into the textual representation.
+
+CREATE FUNCTION intset_out(intSet)      
+   RETURNS cstring
+   AS '_OBJWD_/intset'
+   LANGUAGE C IMMUTABLE STRICT;
+
+
+-- now, we can create the type. The internallength specifies the size of the
+-- memory block required to hold the type (we need two 8-byte doubles).
+
+CREATE TYPE intset (                     
+   internallength = variable,
+   input = intset_in,
+   output = intset_out,
+);
+
+
+-- first, define the required operators
+CREATE FUNCTION intset_contain(int, intset) RETURNS bool
+   AS '_OBJWD_/intset' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION intset_cardinality(intset) RETURNS int4
+   AS '_OBJWD_/intset' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION intset_improper_superset(intset, intset) RETURNS bool
+   AS '_OBJWD_/intset' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION intset_improper_subset(intset, intset) RETURNS bool
+   AS '_OBJWD_/intset' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION intset_eq(intset, intset) RETURNS bool
+   AS '_OBJWD_/intset' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION intset_not_eq(intset, intset) RETURNS bool
+   AS '_OBJWD_/intset' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION intset_intersection(intset, intset) RETURNS intSet
+   AS '_OBJWD_/intset' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION intset_union(intset, intset) RETURNS intSet
+   AS '_OBJWD_/intset' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION intset_disjunction(intset, intset) RETURNS intSet
+   AS '_OBJWD_/intset' LANGUAGE C IMMUTABLE STRICT;
+CREATE FUNCTION intset_difference(intset, intset) RETURNS intSet
+   AS '_OBJWD_/intset' LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OPERATOR ? (
+   leftarg = int, rightarg = intset, procedure = intset_contain
+);
+CREATE OPERATOR # (
+   rightarg = intset, procedure = intset_cardinality
+);
+CREATE OPERATOR >@ (
+   leftarg = intset, rightarg = intset, procedure = intset_improper_superset,
+   commutator @< 
+);
+CREATE OPERATOR @< (
+   leftarg = intset, rightarg = intset, procedure = intset_improper_subset,
+   commutator >@ 
+);
+CREATE OPERATOR = (
+   leftarg = intset, rightarg = intset, procedure = intset_eq,
+   commutator =  , negator <> ,
+   restrict = eqsel, join = eqjoinsel
+);
+CREATE OPERATOR <> (
+   leftarg = intset, rightarg = intset, procedure = intset_not_eq,
+   commutator <>  , negator = ,
+   restrict = neqsel, join = neqjoinsel
+);
+CREATE OPERATOR && (
+   leftarg = intset, rightarg = intset, procedure = intset_intersection,
+   commutator &&  
+);
+CREATE OPERATOR || (
+   leftarg = intset, rightarg = intset, procedure = intset_union,
+   commutator ||  
+);
+CREATE OPERATOR !! (
+   leftarg = intset, rightarg = intset, procedure = intset_disjunction,
+   commutator !!  
+);
+CREATE OPERATOR - (
+   leftarg = intset, rightarg = intset, procedure = intset_difference,
+);
