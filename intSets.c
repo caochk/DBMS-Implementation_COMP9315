@@ -1,5 +1,5 @@
 /*
- * src/tutorial/intSets.c
+ * src/tutorial/intSet.c
  *
  ******************************************************************************
   This file contains routines that can be bound to a Postgres backend and
@@ -21,13 +21,14 @@
 
 PG_MODULE_MAGIC;
 
-typedef struct intSets
+typedef struct intSet
 {
-    int32 numOfIntegers; //还没完全搞懂应该用哪种int型
-    int isets[FLEXIBLE_ARRAY_MEMBER];
-} intSets;
+    int lengthOfIntSetSting;
+    int numOfIntegers; //还没完全搞懂应该用哪种int型
+    int iset[FLEXIBLE_ARRAY_MEMBER];
+} intSet;
 
-static int valid_intSets(char *str){
+static int valid_intSet(char *str){
     char *pattern = " *{( *\d?,?)*} *";
     regex_t regex;
     int validOrNot = FALSE;
@@ -41,7 +42,7 @@ static int valid_intSets(char *str){
     return validOrNot;
 }
 
-static int length_of_intSetsString(char *str){
+static int length_of_intSetString(char *str){
     int numOfNonBlankCharacters = 0;
     while (*str != '\0'){
         if (*str != ' '){
@@ -52,9 +53,9 @@ static int length_of_intSetsString(char *str){
     return numOfNonBlankCharacters;
 }
 
-static char *remove_spaces(char *str, int lengthOfIntSetsString, char *intSetsString){
-    char *p = intSetsString;
-    intSetsString[lengthOfIntSetsString] = '\0';
+static char *remove_spaces(char *str, int lengthOfIntSetsString, char *intSetString){
+    char *p = intSetString;
+    intSetString[lengthOfIntSetsString] = '\0';
     while (*str != '\0'){
         if (*str != ' '){
             *p = *str;
@@ -62,47 +63,47 @@ static char *remove_spaces(char *str, int lengthOfIntSetsString, char *intSetsSt
         }
         str++;
     }
-    return intSetsString;
+    return intSetString;
 }
 
-static void remove_braces(char intSetsString[], char targetCharacter){
+static void remove_braces(char intSetString[], char targetCharacter){
     int i,j;
-    for(i=j=0;intSetsString[i]!='\0';i++){
-        if(intSetsString[i] != targetCharacter){
-            intSetsString[j++] = intSetsString[i];
+    for(i=j=0;intSetString[i]!='\0';i++){
+        if(intSetString[i] != targetCharacter){
+            intSetString[j++] = intSetString[i];
         }
     }
-    intSetsString[j]='\0';
+    intSetString[j]='\0';
 }
 
-static int num_of_integers(char *intSetsString, int count){
-    while (*intSetsString != '\0'){
-        if (*intSetsString == ','){
+static int num_of_integers(char *intSetString, int count){
+    while (*intSetString != '\0'){
+        if (*intSetString == ','){
             count++;
         }
-        intSetsString++;
+        intSetString++;
     }
     return count;
 }
 
-static int * transform_intSetsString_to_intSetsArray(char *intSetsString, int lengthOfIntSetsString, int numOfIntegers, int *intSets){
+static int * transform_intSetString_to_intSetArray(char *intSetString, int lengthOfIntSetsString, int numOfIntegers, int *intSet){
     char *iSetsStrtingTemp=(char *)malloc(lengthOfIntSetsString+1); //change to palloc
-    snprintf(iSetsStrtingTemp, lengthOfIntSetsString+1, "%s", intSetsString);
+    snprintf(iSetsStrtingTemp, lengthOfIntSetsString+1, "%s", intSetString);
     char *element;
     char *remaingElements;
     int i = 1;
 
     element = strtok_r(iSetsStrtingTemp, ",", &remaingElements);
-    sscanf(element, "%d", intSets);
+    sscanf(element, "%d", intSet);
     while(element != NULL) {
         element = strtok_r(NULL, ",", &remaingElements);
         if (element != NULL) {
-            sscanf(element, "%d", intSets + i);
+            sscanf(element, "%d", intSet + i);
             i++;
         }
     }
     free(iSetsStrtingTemp); // free() is unnecessary due to palloc()
-    return intSets;
+    return intSet;
 }
 
 
@@ -110,35 +111,36 @@ static int * transform_intSetsString_to_intSetsArray(char *intSetsString, int le
  * Input/Output functions
  *****************************************************************************/
 
-PG_FUNCTION_INFO_V1(intsets_in);
+PG_FUNCTION_INFO_V1(intset_in);
 
 Datum
-intsets_in(PG_FUNCTION_ARGS)
+intset_in(PG_FUNCTION_ARGS)
 {
     char	  *str = PG_GETARG_CSTRING(0);
-    intSets   *result;
+    intSet   *result;
 
-    int length = strlen(str) + 1; // the length of intSets, including the length of '\0'
+    int length = strlen(str) + 1; // the length of intSet, including the length of '\0'
+    result->lengthOfIntSetSting = length;
 
-    if (!valid_intSets(str))
+    if (!valid_intSet(str))
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
                         errmsg("invalid input syntax for type %s: \"%s\"",
-                               "intSets", str)));
+                               "intSet", str)));
 
-    result = (intSets *) palloc(VARHDRSZ+length);
+    result = (intSet *) palloc(VARHDRSZ+length);
     SET_VARSIZE(result,VARHDRSZ+length);
 
-    int lengthOfIntSetsString = length_of_intSetsString(str);
-    char intSetsString[lengthOfIntSetsString+1];
-    remove_spaces(str, lengthOfIntSetsString, intSetsString);
-    remove_braces(intSetsString, '{');
-    remove_braces(intSetsString, '}');
+    int lengthOfIntSetsString = length_of_intSetString(str);
+    char intSetString[lengthOfIntSetsString+1];
+    remove_spaces(str, lengthOfIntSetsString, intSetString);
+    remove_braces(intSetString, '{');
+    remove_braces(intSetString, '}');
     int numOfIntegers = 1;
-    numOfIntegers = num_of_integers(intSetsString, numOfIntegers);
+    numOfIntegers = num_of_integers(intSetString, numOfIntegers);
     result->numOfIntegers = numOfIntegers;
-    int intSets[numOfIntegers];
-    result->isets = transform_intSetsString_to_intSetsArray(intSetsString, lengthOfIntSetsString, numOfIntegers, intSets); //把字符串类型的intSets转换为真正的整数数组类型（即intSets的内部表示形式）
+    int intSet[numOfIntegers];
+    result->iset = transform_intSetString_to_intSetArray(intSetString, lengthOfIntSetsString, numOfIntegers, intSet); //把字符串类型的intSet转换为真正的整数数组类型（即intSet的内部表示形式）
 
     PG_RETURN_POINTER(result);
 }
@@ -146,13 +148,24 @@ intsets_in(PG_FUNCTION_ARGS)
 PG_FUNCTION_INFO_V1(insets_out);
 
 Datum
-insets_out(PG_FUNCTION_ARGS) // not completed
+insets_out(PG_FUNCTION_ARGS)
 {
-    intSets   *intSets = (intSets *) PG_GETARG_POINTER(0);
-    char	  *result;
+    intSet   *intSet = (intSet *) PG_GETARG_POINTER(0);
+    char	 result[intSet->lengthOfIntSetSting];
+    char    element[intSet->lengthOfIntSetSting];
+    char    comma[2] = {','};
+    char    leftBrace[2] = {'{'};
+    char    rightBrace[2] = {'}'};
 
-    int sizeOfIntSets = sizeof(intSets->isets);//尚未完成：不知道如何将整数数组中的元素一个个拿出来变成字符串（利用itoa()函数）->然后拼接字符串->最后赋给result |||或者有没有直接将整个整数数组转换为字符串数组
-
+    strcpy(result, leftBrace);
+    for (int i = 0; i < intSet->numOfIntegers; ++i) {
+        itoa(intSet->iset[i],element, 10);
+        strcat(result, element);
+        if (i != intSet->numOfIntegers-1){
+            strcat(result, comma);
+        }
+    }
+    strcat(result, rightBrace);
 
     PG_RETURN_CSTRING(result);
 }
@@ -163,47 +176,47 @@ insets_out(PG_FUNCTION_ARGS) // not completed
  * These are optional.
  *****************************************************************************/
 
-PG_FUNCTION_INFO_V1(complex_recv);
-
-Datum
-complex_recv(PG_FUNCTION_ARGS) // **no need to implement**
-{
-    StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
-    Complex    *result;
-
-    result = (Complex *) palloc(sizeof(Complex));
-    result->x = pq_getmsgfloat8(buf);
-    result->y = pq_getmsgfloat8(buf);
-    PG_RETURN_POINTER(result);
-}
-
-PG_FUNCTION_INFO_V1(complex_send);
-
-Datum
-complex_send(PG_FUNCTION_ARGS) // **no need to implement**
-{
-    Complex    *complex = (Complex *) PG_GETARG_POINTER(0);
-    StringInfoData buf;
-
-    pq_begintypsend(&buf);
-    pq_sendfloat8(&buf, complex->x);
-    pq_sendfloat8(&buf, complex->y);
-    PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
-}
+//PG_FUNCTION_INFO_V1(complex_recv);
+//
+//Datum
+//complex_recv(PG_FUNCTION_ARGS) // **no need to implement**
+//{
+//    StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
+//    Complex    *result;
+//
+//    result = (Complex *) palloc(sizeof(Complex));
+//    result->x = pq_getmsgfloat8(buf);
+//    result->y = pq_getmsgfloat8(buf);
+//    PG_RETURN_POINTER(result);
+//}
+//
+//PG_FUNCTION_INFO_V1(complex_send);
+//
+//Datum
+//complex_send(PG_FUNCTION_ARGS) // **no need to implement**
+//{
+//    Complex    *complex = (Complex *) PG_GETARG_POINTER(0);
+//    StringInfoData buf;
+//
+//    pq_begintypsend(&buf);
+//    pq_sendfloat8(&buf, complex->x);
+//    pq_sendfloat8(&buf, complex->y);
+//    PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
+//}
 
 /*****************************************************************************
  * New Operators
  *
  * A practical Complex datatype would provide much more than this, of course.
  *****************************************************************************/
-static int intsets_inclusion(intSets *A, intSets *B){
-//    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
-//    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
+static int intset_inclusion(intSet *A, intSet *B){
+//    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
+//    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
 
     int result = FALSE;
     for (int i = 0; i < B->numOfIntegers; ++i) {
         for (int j = 0; j < A->numOfIntegers; ++j) {
-            if (B->isets[i] == A->isets[j]){
+            if (B->iset[i] == A->iset[j]){
                 result = TRUE;
             }
         }
@@ -214,11 +227,11 @@ static int intsets_inclusion(intSets *A, intSets *B){
     return result;
 }
 
-static int num_of_same_elements(intSets *A, intSets *B){
+static int num_of_same_elements(intSet *A, intSet *B){
     int numOfSameElements = 0;
     for (int i = 0; i < A->numOfIntegers; ++i) {
         for (int j = 0; j < B->numOfIntegers; ++j) {
-            if (A->isets[i] == B->isets[j]){
+            if (A->iset[i] == B->iset[j]){
                 numOfSameElements++;
             }
         }
@@ -226,12 +239,12 @@ static int num_of_same_elements(intSets *A, intSets *B){
     return numOfSameElements;
 }
 
-static int *sets_intersection(intSets *A, intSets *B, int *resultSet){
+static int *sets_intersection(intSet *A, intSet *B, int *resultSet){
     int k = 0;
     for (int i = 0; i < A->numOfIntegers; ++i) {
         for (int j = 0; j < B->numOfIntegers; ++j) {
-            if (A->isets[i] == B->isets[j]){
-                resultSet[k] = A->isets[i];
+            if (A->iset[i] == B->iset[j]){
+                resultSet[k] = A->iset[i];
                 k++;
             }
         }
@@ -239,12 +252,12 @@ static int *sets_intersection(intSets *A, intSets *B, int *resultSet){
     return resultSet;
 }
 
-//static int *sets_union(intSets *A, intSets *B, int *resultSet){
+//static int *sets_union(intSet *A, intSet *B, int *resultSet){
 //    int k = 0;
 //    for (int i = 0; i < A->numOfIntegers; ++i) {
 //        for (int j = 0; j < B->numOfIntegers; ++j) {
-//            if (A->isets[i] == B->isets[j]){
-//                resultSet[k] = A->isets[i];
+//            if (A->iset[i] == B->iset[j]){
+//                resultSet[k] = A->iset[i];
 //                k++;
 //            }
 //        }
@@ -252,17 +265,17 @@ static int *sets_intersection(intSets *A, intSets *B, int *resultSet){
 //    return resultSet;
 //}
 
-static int *sets_difference(intSets *A, intSets *B, int *resultSet){
+static int *sets_difference(intSet *A, intSet *B, int *resultSet){
     int count = 0;
     int k = 0;
     for (int i = 0; i < A->numOfIntegers; ++i) {
         for (int j = 0; j < B->numOfIntegers; ++j) {
-            if (A->isets[i] != B->isets[j]){
+            if (A->iset[i] != B->iset[j]){
                 count++;
             }
         }
         if (count == B->numOfIntegers){
-            resultSet[k] = A->isets[i];
+            resultSet[k] = A->iset[i];
             k ++;
         }
         count = 0;
@@ -271,120 +284,120 @@ static int *sets_difference(intSets *A, intSets *B, int *resultSet){
 }
 
 // Operator: ?
-PG_FUNCTION_INFO_V1(intsets_contain); //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_contain); //完成【尚未验证】
 
 Datum
-intsets_contain(PG_FUNCTION_ARGS)
+intset_contain(PG_FUNCTION_ARGS)
 {
     int        i = (int) PG_GETARG_POINTER(0); //写法存疑！！！！！！！！！！！
-    intSets   *S = (intSets *) PG_GETARG_POINTER(1);
+    intSet   *S = (intSet *) PG_GETARG_POINTER(1);
 
     int result = FALSE;
     for (int j = 0; j < S->numOfIntegers; ++j) {
-        if (i == S->isets[j]){
+        if (i == S->iset[j]){
             result = TRUE;
         }
     }
-    PG_RETURN_POINTER(result);
+    PG_RETURN_BOOL(result==TRUE);
 }
 
 //Operator: #
-PG_FUNCTION_INFO_V1(intsets_cardinality); //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_cardinality); //完成【尚未验证】
 
 Datum
-intsets_cardinality(PG_FUNCTION_ARGS)
+intset_cardinality(PG_FUNCTION_ARGS)
 {
-    intSets   *S = (intSets *) PG_GETARG_POINTER(0);
+    intSet   *S = (intSet *) PG_GETARG_POINTER(0);
 
     PG_RETURN_INT32(S->numOfIntegers);
 }
 
 //Operator: >@
-PG_FUNCTION_INFO_V1(intsets_improper_superset); //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_improper_superset); //完成【尚未验证】
 
 Datum
-intsets_improper_superset(PG_FUNCTION_ARGS)
+intset_improper_superset(PG_FUNCTION_ARGS)
 {
-    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
-    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
+    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
+    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
 
-    PG_RETURN_INT32(intsets_inclusion(A, B));
+    PG_RETURN_BOOL(intset_inclusion(A, B)==FALSE);
 }
 
 //Operator: @<
-PG_FUNCTION_INFO_V1(intsets_improper_subset); //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_improper_subset); //完成【尚未验证】
 
 Datum
-intsets_improper_subset(PG_FUNCTION_ARGS)
+intset_improper_subset(PG_FUNCTION_ARGS)
 {
-    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
-    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
+    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
+    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
 
-    PG_RETURN_INT32(intsets_inclusion(B, A));
+    PG_RETURN_BOOL(intset_inclusion(B, A)==TRUE);
 }
 
 //Operator: =
-PG_FUNCTION_INFO_V1(intsets_eq); //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_eq); //完成【尚未验证】
 
 Datum
-intsets_eq(PG_FUNCTION_ARGS)
+intset_eq(PG_FUNCTION_ARGS)
 {
-    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
-    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
+    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
+    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
 
-    int result1 = intsets_inclusion(A, B);
-    int result2 = intsets_inclusion(B, A);
+    int result1 = intset_inclusion(A, B);
+    int result2 = intset_inclusion(B, A);
     int result = FALSE;
     if (result1 == TRUE && result2 == TRUE){
         result = TRUE;
     }
-    PG_RETURN_INT32(result);
+    PG_RETURN_BOOL(result==TRUE);
 }
 
 //Operator: <>
-PG_FUNCTION_INFO_V1(intsets_not_eq); //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_not_eq); //完成【尚未验证】
 
 Datum
-intsets_not_eq(PG_FUNCTION_ARGS)
+intset_not_eq(PG_FUNCTION_ARGS)
 {
-    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
-    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
+    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
+    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
 
-    int result = intsets_inclusion(A, B);
-//    int result2 = intsets_inclusion(B, A);
+    int result = intset_inclusion(A, B);
+//    int result2 = intset_inclusion(B, A);
 //    int result = FALSE;
 //    if (result1 == FALSE && result2 == TRUE){
 //        result = TRUE;
 //    }
-    PG_RETURN_INT32(!result);
+    PG_RETURN_BOOL(result==FALSE);
 }
 
 //Operator: &&
-PG_FUNCTION_INFO_V1(intsets_intersection);
+PG_FUNCTION_INFO_V1(intset_intersection);
 
 Datum
-intsets_intersection(PG_FUNCTION_ARGS)
+intset_intersection(PG_FUNCTION_ARGS)
 {
-    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
-    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
-    intSets *result;
+    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
+    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
+    intSet *result;
     int numOfSameElements = num_of_same_elements(A, B);
     result->numOfIntegers = numOfSameElements;
     int resultSet[numOfSameElements];
-    result->isets = sets_intersection(A, B, resultSet);
+    result->iset = sets_intersection(A, B, resultSet);
 
     PG_RETURN_POINTER(result);
 }
 
 //Operator: ||
-PG_FUNCTION_INFO_V1(intsets_union); //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_union); //完成【尚未验证】
 
 Datum
-intsets_union(PG_FUNCTION_ARGS)
+intset_union(PG_FUNCTION_ARGS)
 {
-    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
-    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
-    intSets *result;
+    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
+    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
+    intSet *result;
     int numOfSameElements = num_of_same_elements(A, B);
 
     //先求差集
@@ -399,25 +412,25 @@ intsets_union(PG_FUNCTION_ARGS)
     //将差集与集合B合到一起便是并集
     int resultSet[lengthOfResultSet];
     for (int i = 0; i < B->numOfIntegers; ++i) {
-        resultSet[i] = B->isets[i];
+        resultSet[i] = B->iset[i];
     }
     for (int i = 0; i < lengthOfDifferenceSet; ++i) {
         resultSet[B->numOfIntegers+i] = differenceSet[i];
     }
-    result->isets = resultSet;
+    result->iset = resultSet;
 
     PG_RETURN_POINTER(result);
 }
 
 //Operator: ！！
-PG_FUNCTION_INFO_V1(intsets_disjunction);  //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_disjunction);  //完成【尚未验证】
 
 Datum
-intsets_disjunction(PG_FUNCTION_ARGS)
+intset_disjunction(PG_FUNCTION_ARGS)
 {
-    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
-    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
-    intSets *result;
+    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
+    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
+    intSet *result;
 
     int numOfSameElements = num_of_same_elements(A, B);
     int lengthOfResultSet1 = A->numOfIntegers - numOfSameElements;
@@ -438,25 +451,25 @@ intsets_disjunction(PG_FUNCTION_ARGS)
         resultSet[lengthOfResultSet1+i] = resultTemp2[i];
     }
     result->numOfIntegers = lengthOfResultSet1 + lengthOfResultSet2;
-    result->isets = resultSet;
+    result->iset = resultSet;
 
     PG_RETURN_POINTER(result);
 }
 
 //Operator: -
-PG_FUNCTION_INFO_V1(intsets_difference);  //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_difference);  //完成【尚未验证】
 
 Datum
-intsets_difference(PG_FUNCTION_ARGS)
+intset_difference(PG_FUNCTION_ARGS)
 {
-    intSets   *A = (intSets *) PG_GETARG_POINTER(0);
-    intSets   *B = (intSets *) PG_GETARG_POINTER(1);
-    intSets *result;
+    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
+    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
+    intSet *result;
     int numOfSameElements = num_of_same_elements(A, B);
     int lengthOfResultSet = A->numOfIntegers - numOfSameElements;
     result->numOfIntegers = lengthOfResultSet;
     int resultSet[lengthOfResultSet];
-    result->isets = sets_difference(A, B, resultSet);
+    result->iset = sets_difference(A, B, resultSet);
 
     PG_RETURN_POINTER(result);
 }
