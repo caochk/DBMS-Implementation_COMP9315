@@ -141,7 +141,7 @@ intset_in(PG_FUNCTION_ARGS)
     result->numOfIntegers = numOfIntegers;
     int intSet[numOfIntegers];
     result->iset = transform_intSetString_to_intSetArray(intSetString, lengthOfIntSetsString, numOfIntegers, intSet); //把字符串类型的intSet转换为真正的整数数组类型（即intSet的内部表示形式）
-
+    //上句有问题，这样写相当于在强行修改原先结构体定义好时iset的地址为新的transform_intSetString_to_intSetArray返回的地址！改地址是不允许的！只有复制被允许！
     PG_RETURN_POINTER(result);
 }
 
@@ -214,15 +214,17 @@ static int intset_inclusion(intSet *A, intSet *B){
 //    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
 
     int result = FALSE;
+    int count = 0;
     for (int i = 0; i < B->numOfIntegers; ++i) {
         for (int j = 0; j < A->numOfIntegers; ++j) {
             if (B->iset[i] == A->iset[j]){
-                result = TRUE;
+                count++;
+                break;
             }
         }
-        if (result == FALSE){
-            break;
-        }
+    }
+    if (count==B->numOfIntegers){
+        result = TRUE;
     }
     return result;
 }
@@ -284,7 +286,7 @@ static int *sets_difference(intSet *A, intSet *B, int *resultSet){
 }
 
 // Operator: ?
-PG_FUNCTION_INFO_V1(intset_contain); //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_contain);
 
 Datum
 intset_contain(PG_FUNCTION_ARGS)
@@ -302,7 +304,7 @@ intset_contain(PG_FUNCTION_ARGS)
 }
 
 //Operator: #
-PG_FUNCTION_INFO_V1(intset_cardinality); //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_cardinality);
 
 Datum
 intset_cardinality(PG_FUNCTION_ARGS)
@@ -313,7 +315,7 @@ intset_cardinality(PG_FUNCTION_ARGS)
 }
 
 //Operator: >@
-PG_FUNCTION_INFO_V1(intset_improper_superset); //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_improper_superset);
 
 Datum
 intset_improper_superset(PG_FUNCTION_ARGS)
@@ -325,7 +327,7 @@ intset_improper_superset(PG_FUNCTION_ARGS)
 }
 
 //Operator: @<
-PG_FUNCTION_INFO_V1(intset_improper_subset); //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_improper_subset);
 
 Datum
 intset_improper_subset(PG_FUNCTION_ARGS)
@@ -337,7 +339,7 @@ intset_improper_subset(PG_FUNCTION_ARGS)
 }
 
 //Operator: =
-PG_FUNCTION_INFO_V1(intset_eq); //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_eq);
 
 Datum
 intset_eq(PG_FUNCTION_ARGS)
@@ -355,7 +357,7 @@ intset_eq(PG_FUNCTION_ARGS)
 }
 
 //Operator: <>
-PG_FUNCTION_INFO_V1(intset_not_eq); //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_not_eq);
 
 Datum
 intset_not_eq(PG_FUNCTION_ARGS)
@@ -363,13 +365,13 @@ intset_not_eq(PG_FUNCTION_ARGS)
     intSet   *A = (intSet *) PG_GETARG_POINTER(0);
     intSet   *B = (intSet *) PG_GETARG_POINTER(1);
 
-    int result = intset_inclusion(A, B);
-//    int result2 = intset_inclusion(B, A);
-//    int result = FALSE;
-//    if (result1 == FALSE && result2 == TRUE){
-//        result = TRUE;
-//    }
-    PG_RETURN_BOOL(result==FALSE);
+    int result1 = intset_inclusion(A, B);
+    int result2 = intset_inclusion(B, A);
+    int result = FALSE;
+    if (result1 == FALSE || result2 == FALSE){
+        result = TRUE;
+    }
+    PG_RETURN_BOOL(result==TRUE);
 }
 
 //Operator: &&
@@ -380,17 +382,23 @@ intset_intersection(PG_FUNCTION_ARGS)
 {
     intSet   *A = (intSet *) PG_GETARG_POINTER(0);
     intSet   *B = (intSet *) PG_GETARG_POINTER(1);
-    intSet *result;
+    intSet result;
     int numOfSameElements = num_of_same_elements(A, B);
-    result->numOfIntegers = numOfSameElements;
+    result.numOfIntegers = numOfSameElements;
     int resultSet[numOfSameElements];
-    result->iset = sets_intersection(A, B, resultSet);
+    sets_intersection(A, B, resultSet);
 
-    PG_RETURN_POINTER(result);
+    for (int j = 0; j < numOfSameElements; ++j) {
+        result.iset[j] = resultSet[j];
+    }
+
+    intSet *pointerOfResult = &result;
+
+    PG_RETURN_POINTER(pointerOfResult);
 }
 
 //Operator: ||
-PG_FUNCTION_INFO_V1(intset_union); //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_union); //【未通过】
 
 Datum
 intset_union(PG_FUNCTION_ARGS)
@@ -423,7 +431,7 @@ intset_union(PG_FUNCTION_ARGS)
 }
 
 //Operator: ！！
-PG_FUNCTION_INFO_V1(intset_disjunction);  //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_disjunction);  //【未通过】
 
 Datum
 intset_disjunction(PG_FUNCTION_ARGS)
@@ -457,19 +465,26 @@ intset_disjunction(PG_FUNCTION_ARGS)
 }
 
 //Operator: -
-PG_FUNCTION_INFO_V1(intset_difference);  //完成【尚未验证】
+PG_FUNCTION_INFO_V1(intset_difference);
 
 Datum
 intset_difference(PG_FUNCTION_ARGS)
 {
     intSet   *A = (intSet *) PG_GETARG_POINTER(0);
     intSet   *B = (intSet *) PG_GETARG_POINTER(1);
-    intSet *result;
+    intSet result;
     int numOfSameElements = num_of_same_elements(A, B);
     int lengthOfResultSet = A->numOfIntegers - numOfSameElements;
-    result->numOfIntegers = lengthOfResultSet;
-    int resultSet[lengthOfResultSet];
-    result->iset = sets_difference(A, B, resultSet);
+    result.numOfIntegers = lengthOfResultSet;
 
-    PG_RETURN_POINTER(result);
+    int resultSet[lengthOfResultSet];
+    sets_difference(A, B, resultSet);
+
+    for (int j = 0; j < lengthOfResultSet; ++j) {
+        result.iset[j] = resultSet[j];
+    }
+
+    intSet *pointerOfResult = &result;
+
+    PG_RETURN_POINTER(pointerOfResult);
 }
