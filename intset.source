@@ -35,7 +35,7 @@ CREATE FUNCTION intset_out(intSet)
 -- now, we can create the type. The internallength specifies the size of the
 -- memory block required to hold the type (we need two 8-byte doubles).
 
-CREATE TYPE intset (                     
+CREATE TYPE intSet (
    internallength = variable,
    input = intset_in,
    output = intset_out,
