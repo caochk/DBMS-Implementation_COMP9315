@@ -13,7 +13,7 @@
 #include "libpq/pqformat.h"		/* needed for send/recv functions */
 #include <stdio.h>
 #include <string.h>
-#include "regex.h"
+#include <regex.h>
 #include <stdlib.h>
 
 #define TRUE 1
@@ -26,10 +26,10 @@ typedef struct intSet
     int lengthOfIntSetSting;
     int numOfIntegers; //还没完全搞懂应该用哪种int型
     int iset[FLEXIBLE_ARRAY_MEMBER];
-} intSet;
+} intset;
 
 static int valid_intSet(char *str){
-    char *pattern = " *{( *\d?,?)*} *";
+    char *pattern = " *{( *\\d?,?)*} *";
     regex_t regex;
     int validOrNot = FALSE;
     if(regcomp(&regex, pattern, REG_EXTENDED)){ //必须先编译pattern，编译后的结果会存放在regex这个变量中
@@ -86,24 +86,34 @@ static int num_of_integers(char *intSetString, int count){
     return count;
 }
 
-static int * transform_intSetString_to_intSetArray(char *intSetString, int lengthOfIntSetsString, int numOfIntegers, int *intSet){
-    char *iSetsStrtingTemp=(char *)malloc(lengthOfIntSetsString+1); //change to palloc
-    snprintf(iSetsStrtingTemp, lengthOfIntSetsString+1, "%s", intSetString);
+static int transform_intSetString_to_intSetArray(char *intSetString, int lengthOfIntSetsString, int numOfIntegers, intset intsets){
+    char *iSetsStrtingTemp;
     char *element;
     char *remaingElements;
+    int *iset;
     int i = 1;
 
+    iSetsStrtingTemp =(char *)palloc(lengthOfIntSetsString+1); //change to palloc
+    snprintf(iSetsStrtingTemp, lengthOfIntSetsString+1, "%s", intSetString);
+
+
+
+    iset = (int *) palloc(numOfIntegers);
+
     element = strtok_r(iSetsStrtingTemp, ",", &remaingElements);
-    sscanf(element, "%d", intSet);
+    sscanf(element, "%d", iset);
     while(element != NULL) {
         element = strtok_r(NULL, ",", &remaingElements);
         if (element != NULL) {
-            sscanf(element, "%d", intSet + i);
+            sscanf(element, "%d", iset + i);
             i++;
         }
     }
-    free(iSetsStrtingTemp); // free() is unnecessary due to palloc()
-    return intSet;
+    for (int j = 0; j < numOfIntegers; ++j) {
+        intsets.iset[j] = iset[j];
+    }
+//    free(iSetsStrtingTemp); // free() is unnecessary due to palloc()
+    return i;
 }
 
 
@@ -117,10 +127,14 @@ Datum
 intset_in(PG_FUNCTION_ARGS)
 {
     char	  *str = PG_GETARG_CSTRING(0);
-    intSet   *result;
+    intset   result;
+    int lengthOfIntSetsString;
+    char *intSetString;
+    int numOfIntegers = 1;
+    intset *pointerOfResult;
 
     int length = strlen(str) + 1; // the length of intSet, including the length of '\0'
-    result->lengthOfIntSetSting = length;
+    result.lengthOfIntSetSting = length;
 
     if (!valid_intSet(str))
         ereport(ERROR,
@@ -128,40 +142,54 @@ intset_in(PG_FUNCTION_ARGS)
                         errmsg("invalid input syntax for type %s: \"%s\"",
                                "intSet", str)));
 
-    result = (intSet *) palloc(VARHDRSZ+length);
-    SET_VARSIZE(result,VARHDRSZ+length);
+//    result = (intSet *) palloc(VARHDRSZ+length);
+//    SET_VARSIZE(result,VARHDRSZ+length);
 
-    int lengthOfIntSetsString = length_of_intSetString(str);
-    char intSetString[lengthOfIntSetsString+1];
+
+    lengthOfIntSetsString = length_of_intSetString(str);
+
+    intSetString = (char *) palloc(lengthOfIntSetsString+1);
+
     remove_spaces(str, lengthOfIntSetsString, intSetString);
     remove_braces(intSetString, '{');
     remove_braces(intSetString, '}');
-    int numOfIntegers = 1;
+
+
     numOfIntegers = num_of_integers(intSetString, numOfIntegers);
-    result->numOfIntegers = numOfIntegers;
-    int intSet[numOfIntegers];
-    result->iset = transform_intSetString_to_intSetArray(intSetString, lengthOfIntSetsString, numOfIntegers, intSet); //把字符串类型的intSet转换为真正的整数数组类型（即intSet的内部表示形式）
-    //上句有问题，这样写相当于在强行修改原先结构体定义好时iset的地址为新的transform_intSetString_to_intSetArray返回的地址！改地址是不允许的！只有复制被允许！
-    PG_RETURN_POINTER(result);
+    result.numOfIntegers = numOfIntegers;
+//    int *intset;
+//    intset = (int *) palloc(numOfIntegers);
+    transform_intSetString_to_intSetArray(intSetString, lengthOfIntSetsString, numOfIntegers, result); //把字符串类型的intSet转换为真正的整数数组类型（即intSet的内部表示形式）
+    //【真ERROR】上句有问题，这样写相当于在强行修改原先结构体定义好时iset的地址为新的transform_intSetString_to_intSetArray返回的地址！改地址是不允许的！只有复制被允许！
+
+    pointerOfResult = &result;
+    PG_RETURN_POINTER(pointerOfResult);
 }
 
-PG_FUNCTION_INFO_V1(insets_out);
+PG_FUNCTION_INFO_V1(intset_out);
 
 Datum
-insets_out(PG_FUNCTION_ARGS)
+intset_out(PG_FUNCTION_ARGS)
 {
-    intSet   *intSet = (intSet *) PG_GETARG_POINTER(0);
-    char	 result[intSet->lengthOfIntSetSting];
-    char    element[intSet->lengthOfIntSetSting];
+    char *result;
+    char *element;
     char    comma[2] = {','};
     char    leftBrace[2] = {'{'};
     char    rightBrace[2] = {'}'};
 
+    intset   *intsets = (intset *)PG_GETARG_POINTER(0);
+
+    result = (char *) palloc(intsets->lengthOfIntSetSting);
+
+    element = (char *) palloc(intsets->lengthOfIntSetSting);
+
+
     strcpy(result, leftBrace);
-    for (int i = 0; i < intSet->numOfIntegers; ++i) {
-        itoa(intSet->iset[i],element, 10);
+    for (int i = 0; i < intsets->numOfIntegers; ++i) {
+//        itoa(intset->iset[i],element, 10);//ERROR:无itoa函数
+        snprintf(element, intsets->lengthOfIntSetSting,"%d", intsets->iset[i]);
         strcat(result, element);
-        if (i != intSet->numOfIntegers-1){
+        if (i != intsets->numOfIntegers-1){
             strcat(result, comma);
         }
     }
@@ -209,7 +237,7 @@ insets_out(PG_FUNCTION_ARGS)
  *
  * A practical Complex datatype would provide much more than this, of course.
  *****************************************************************************/
-static int intset_inclusion(intSet *A, intSet *B){
+static int intset_inclusion(intset *A, intset *B){
 //    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
 //    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
 
@@ -229,7 +257,7 @@ static int intset_inclusion(intSet *A, intSet *B){
     return result;
 }
 
-static int num_of_same_elements(intSet *A, intSet *B){
+static int num_of_same_elements(intset *A, intset *B){
     int numOfSameElements = 0;
     for (int i = 0; i < A->numOfIntegers; ++i) {
         for (int j = 0; j < B->numOfIntegers; ++j) {
@@ -241,7 +269,7 @@ static int num_of_same_elements(intSet *A, intSet *B){
     return numOfSameElements;
 }
 
-static int *sets_intersection(intSet *A, intSet *B, int *resultSet){
+static int *sets_intersection(intset *A, intset *B, int *resultSet){
     int k = 0;
     for (int i = 0; i < A->numOfIntegers; ++i) {
         for (int j = 0; j < B->numOfIntegers; ++j) {
@@ -267,7 +295,7 @@ static int *sets_intersection(intSet *A, intSet *B, int *resultSet){
 //    return resultSet;
 //}
 
-static int *sets_difference(intSet *A, intSet *B, int *resultSet){
+static int *sets_difference(intset *A, intset *B, int *resultSet){
     int count = 0;
     int k = 0;
     for (int i = 0; i < A->numOfIntegers; ++i) {
@@ -291,8 +319,8 @@ PG_FUNCTION_INFO_V1(intset_contain);
 Datum
 intset_contain(PG_FUNCTION_ARGS)
 {
-    int        i = (int) PG_GETARG_POINTER(0); //写法存疑！！！！！！！！！！！
-    intSet   *S = (intSet *) PG_GETARG_POINTER(1);
+    int        i = PG_GETARG_INT32(0); //写法存疑！！！！！！！！！！！【真ERROR】warning: cast from pointer to integer of different size
+    intset   *S = (intset *) PG_GETARG_POINTER(1);
 
     int result = FALSE;
     for (int j = 0; j < S->numOfIntegers; ++j) {
@@ -309,7 +337,7 @@ PG_FUNCTION_INFO_V1(intset_cardinality);
 Datum
 intset_cardinality(PG_FUNCTION_ARGS)
 {
-    intSet   *S = (intSet *) PG_GETARG_POINTER(0);
+    intset   *S = (intset *) PG_GETARG_POINTER(0);
 
     PG_RETURN_INT32(S->numOfIntegers);
 }
@@ -320,8 +348,8 @@ PG_FUNCTION_INFO_V1(intset_improper_superset);
 Datum
 intset_improper_superset(PG_FUNCTION_ARGS)
 {
-    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
-    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
+    intset   *A = (intset *) PG_GETARG_POINTER(0);
+    intset   *B = (intset *) PG_GETARG_POINTER(1);
 
     PG_RETURN_BOOL(intset_inclusion(A, B)==FALSE);
 }
@@ -332,8 +360,8 @@ PG_FUNCTION_INFO_V1(intset_improper_subset);
 Datum
 intset_improper_subset(PG_FUNCTION_ARGS)
 {
-    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
-    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
+    intset   *A = (intset *) PG_GETARG_POINTER(0);
+    intset   *B = (intset *) PG_GETARG_POINTER(1);
 
     PG_RETURN_BOOL(intset_inclusion(B, A)==TRUE);
 }
@@ -344,8 +372,8 @@ PG_FUNCTION_INFO_V1(intset_eq);
 Datum
 intset_eq(PG_FUNCTION_ARGS)
 {
-    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
-    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
+    intset   *A = (intset *) PG_GETARG_POINTER(0);
+    intset   *B = (intset *) PG_GETARG_POINTER(1);
 
     int result1 = intset_inclusion(A, B);
     int result2 = intset_inclusion(B, A);
@@ -362,8 +390,8 @@ PG_FUNCTION_INFO_V1(intset_not_eq);
 Datum
 intset_not_eq(PG_FUNCTION_ARGS)
 {
-    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
-    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
+    intset   *A = (intset *) PG_GETARG_POINTER(0);
+    intset   *B = (intset *) PG_GETARG_POINTER(1);
 
     int result1 = intset_inclusion(A, B);
     int result2 = intset_inclusion(B, A);
@@ -380,19 +408,27 @@ PG_FUNCTION_INFO_V1(intset_intersection);
 Datum
 intset_intersection(PG_FUNCTION_ARGS)
 {
-    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
-    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
-    intSet result;
-    int numOfSameElements = num_of_same_elements(A, B);
+    intset   *A = (intset *) PG_GETARG_POINTER(0);
+    intset   *B = (intset *) PG_GETARG_POINTER(1);
+    intset result;
+    int numOfSameElements;
+    int *resultSet;
+    intset *pointerOfResult;
+
+    numOfSameElements = num_of_same_elements(A, B);
     result.numOfIntegers = numOfSameElements;
-    int resultSet[numOfSameElements];
+    result.lengthOfIntSetSting = numOfSameElements + numOfSameElements + 2;
+
+
+    resultSet = (int *) palloc(numOfSameElements);
     sets_intersection(A, B, resultSet);
 
     for (int j = 0; j < numOfSameElements; ++j) {
         result.iset[j] = resultSet[j];
     }
 
-    intSet *pointerOfResult = &result;
+
+    pointerOfResult = &result;
 
     PG_RETURN_POINTER(pointerOfResult);
 }
@@ -403,31 +439,50 @@ PG_FUNCTION_INFO_V1(intset_union); //【未通过】
 Datum
 intset_union(PG_FUNCTION_ARGS)
 {
-    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
-    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
-    intSet *result;
-    int numOfSameElements = num_of_same_elements(A, B);
+    intset   *A = (intset *) PG_GETARG_POINTER(0);
+    intset   *B = (intset *) PG_GETARG_POINTER(1);
+    intset result;
+    int numOfSameElements;
+    int lengthOfDifferenceSet;
+    int *differenceSet;
+//    int *resultTemp;
+    int lengthOfResultSet;
+    int *resultSet;
+    intset *pointerOfResult;
+
+    numOfSameElements = num_of_same_elements(A, B);
 
     //先求差集
-    int lengthOfDifferenceSet = A->numOfIntegers - numOfSameElements;
-    int differenceSet[lengthOfDifferenceSet];
-    int *resultTemp;
-    resultTemp = sets_difference(A, B, differenceSet);//resultTemp数组存的是差集
+
+    lengthOfDifferenceSet = A->numOfIntegers - numOfSameElements;
+
+    differenceSet = (int *) palloc(lengthOfDifferenceSet);
+
+    sets_difference(A, B, differenceSet);//resultTemp数组存的是差集
 
 
-    int lengthOfResultSet = A->numOfIntegers - numOfSameElements + B->numOfIntegers;
-    result->numOfIntegers = lengthOfResultSet;
+
+    lengthOfResultSet = A->numOfIntegers - numOfSameElements + B->numOfIntegers;
+    result.numOfIntegers = lengthOfResultSet;
+    result.lengthOfIntSetSting = lengthOfResultSet + lengthOfResultSet + 2;
+
     //将差集与集合B合到一起便是并集
-    int resultSet[lengthOfResultSet];
+
+    resultSet = (int*) palloc(lengthOfResultSet);
     for (int i = 0; i < B->numOfIntegers; ++i) {
         resultSet[i] = B->iset[i];
     }
     for (int i = 0; i < lengthOfDifferenceSet; ++i) {
         resultSet[B->numOfIntegers+i] = differenceSet[i];
     }
-    result->iset = resultSet;
+    for (int j = 0; j < lengthOfResultSet; ++j) {
+        result.iset[j] = resultSet[j];
+    }
 
-    PG_RETURN_POINTER(result);
+
+    pointerOfResult = &result;
+
+    PG_RETURN_POINTER(pointerOfResult);
 }
 
 //Operator: ！！
@@ -436,32 +491,52 @@ PG_FUNCTION_INFO_V1(intset_disjunction);  //【未通过】
 Datum
 intset_disjunction(PG_FUNCTION_ARGS)
 {
-    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
-    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
-    intSet *result;
-
-    int numOfSameElements = num_of_same_elements(A, B);
-    int lengthOfResultSet1 = A->numOfIntegers - numOfSameElements;
-    int lengthOfResultSet2 = B->numOfIntegers - numOfSameElements;
-    int differenceSet1[lengthOfResultSet1];
-    int differenceSet2[lengthOfResultSet2];
+    intset   *A = (intset *) PG_GETARG_POINTER(0);
+    intset   *B = (intset *) PG_GETARG_POINTER(1);
+    intset  result;
+    int numOfSameElements;
+    int lengthOfResultSet1;
+    int lengthOfResultSet2;
+    int *differenceSet1;
+    int *differenceSet2;
     int *resultTemp1;
     int *resultTemp2;
+    int *resultSet;
+    intset *pointerOfResult;
+
+    numOfSameElements = num_of_same_elements(A, B);
+
+    lengthOfResultSet1 = A->numOfIntegers - numOfSameElements;
+
+    lengthOfResultSet2 = B->numOfIntegers - numOfSameElements;
+
+    differenceSet1 = (int *) palloc(lengthOfResultSet1);
+
+    differenceSet2 = (int *) palloc(lengthOfResultSet2);
+
     resultTemp1 = sets_difference(A, B, differenceSet1); //get (A-B)
     resultTemp2 = sets_difference(A, B, differenceSet2); //get (B-A)
 
     //to get (A-B)∪(B-A),∵(A-B)∪(B-A)=set disjunction
-    int resultSet[lengthOfResultSet1 + lengthOfResultSet2];
+
+    resultSet = (int *) palloc(lengthOfResultSet1 + lengthOfResultSet2);
     for (int i = 0; i < lengthOfResultSet1; ++i) {
         resultSet[i] = resultTemp1[i];
     }
     for (int i = 0; i < lengthOfResultSet2; ++i) {
         resultSet[lengthOfResultSet1+i] = resultTemp2[i];
     }
-    result->numOfIntegers = lengthOfResultSet1 + lengthOfResultSet2;
-    result->iset = resultSet;
+    result.numOfIntegers = lengthOfResultSet1 + lengthOfResultSet2;
+    result.lengthOfIntSetSting = lengthOfResultSet1 + lengthOfResultSet2 + lengthOfResultSet1 + lengthOfResultSet2 + 2;
 
-    PG_RETURN_POINTER(result);
+    for (int j = 0; j < lengthOfResultSet1 + lengthOfResultSet2; ++j) {
+        result.iset[j] = resultSet[j];
+    }
+
+
+    pointerOfResult = &result;
+
+    PG_RETURN_POINTER(pointerOfResult);
 }
 
 //Operator: -
@@ -470,21 +545,30 @@ PG_FUNCTION_INFO_V1(intset_difference);
 Datum
 intset_difference(PG_FUNCTION_ARGS)
 {
-    intSet   *A = (intSet *) PG_GETARG_POINTER(0);
-    intSet   *B = (intSet *) PG_GETARG_POINTER(1);
-    intSet result;
-    int numOfSameElements = num_of_same_elements(A, B);
-    int lengthOfResultSet = A->numOfIntegers - numOfSameElements;
-    result.numOfIntegers = lengthOfResultSet;
+    intset   *A = (intset *) PG_GETARG_POINTER(0);
+    intset   *B = (intset *) PG_GETARG_POINTER(1);
+    intset result;
+    int numOfSameElements;
+    int lengthOfResultSet;
+    int *resultSet;
+    intset *pointerOfResult;
 
-    int resultSet[lengthOfResultSet];
+    numOfSameElements = num_of_same_elements(A, B);
+
+    lengthOfResultSet = A->numOfIntegers - numOfSameElements;
+    result.numOfIntegers = lengthOfResultSet;
+    result.lengthOfIntSetSting = lengthOfResultSet + 2;
+
+
+    resultSet = (int *) palloc(lengthOfResultSet);
     sets_difference(A, B, resultSet);
 
     for (int j = 0; j < lengthOfResultSet; ++j) {
         result.iset[j] = resultSet[j];
     }
 
-    intSet *pointerOfResult = &result;
+
+    pointerOfResult = &result;
 
     PG_RETURN_POINTER(pointerOfResult);
 }
