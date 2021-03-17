@@ -237,22 +237,16 @@ intset_in(PG_FUNCTION_ARGS)
     }
     intSetString[n]='\0';
 
-//    elog(NOTICE,"1111111111111\n");
 
-
-
-
-
-//    elog(NOTICE,"2222222222\n");
-
-
-
-
-//    transform_intSetString_to_intSetArray(intSetString, lengthOfIntSetsString, numOfIntegers, result);
 
     if (numOfIntegers == 0){
-        resultTmp = (int *) palloc(numOfIntegers*sizeof(int));
+        resultTmp = (int *) palloc(1*sizeof(int));
         resultTmp[0] = 0;
+
+        result = (intSet*) palloc(VARHDRSZ + 1*sizeof(int)+sizeof(int)+sizeof(int));
+        SET_VARSIZE(result,VARHDRSZ + 1*sizeof(int)+sizeof(int)+sizeof(int));
+
+        memcpy(result->iset, resultTmp, 1*sizeof(int));
     }
     else{
         resultTmp = (int *) palloc(numOfIntegers*sizeof(int));
@@ -269,17 +263,14 @@ intset_in(PG_FUNCTION_ARGS)
         }
         numOfIntegers = duplicate_removal(resultTmp, numOfIntegers);
         qsort(resultTmp, numOfIntegers, sizeof(int), cmp_num);
+
+        result = (intSet*) palloc(VARHDRSZ + numOfIntegers*sizeof(int)+sizeof(int)+sizeof(int));
+        SET_VARSIZE(result,VARHDRSZ + numOfIntegers*sizeof(int)+sizeof(int)+sizeof(int));
+
+        memcpy(result->iset, resultTmp, numOfIntegers*sizeof(int));
     }
-
-    result = (intSet*) palloc(VARHDRSZ + numOfIntegers*sizeof(int)+sizeof(int)+sizeof(int));//内存分配存疑
-//    SET_VARSIZE(result,VARHDRSZ + sizeof(intSet));
-    SET_VARSIZE(result,VARHDRSZ + numOfIntegers*sizeof(int)+sizeof(int)+sizeof(int));
-
     result->lengthOfIntSetSting = lengthOfIntSetsString;
     result->numOfIntegers = numOfIntegers;
-    memcpy(result->iset, resultTmp, numOfIntegers*sizeof(int));
-
-//    elog(NOTICE,"index:%d,value:%d\n",i,result->iset[i]);
 
     PG_RETURN_POINTER(result);
 }
@@ -358,8 +349,6 @@ static int intset_inclusion(intSet *A, intSet *B){
 static int num_of_same_elements(intSet *A, intSet *B){
     int numOfSameElements = 0;
 
-//    elog(NOTICE,"CNMD!!!\n");
-
     for (int i = 0; i < A->numOfIntegers; ++i) {
         for (int j = 0; j < B->numOfIntegers; ++j) {
             if (A->iset[i] == B->iset[j]){
@@ -372,8 +361,6 @@ static int num_of_same_elements(intSet *A, intSet *B){
 
 static int *sets_intersection(intSet *A, intSet *B, int *resultSet){
     int k = 0;
-
-//    elog(NOTICE,"CNMD!!!\n");
 
     for (int i = 0; i < A->numOfIntegers; ++i) {
         for (int j = 0; j < B->numOfIntegers; ++j) {
@@ -521,27 +508,48 @@ intset_intersection(PG_FUNCTION_ARGS)
 {
     intSet   *A = (intSet *) PG_GETARG_POINTER(0);
     intSet   *B = (intSet *) PG_GETARG_POINTER(1);
-    intSet result;
+    intSet   *result;
     int numOfSameElements;
     int *resultSet;
-    intSet *pointerOfResult;
+//    intSet *pointerOfResult;
 
     numOfSameElements = num_of_same_elements(A, B);
-    result.numOfIntegers = numOfSameElements;
-    result.lengthOfIntSetSting = numOfSameElements + numOfSameElements + 2;
 
+    if (numOfSameElements == 0){
+        resultSet = (int *) palloc(1 * sizeof(int));//
+        resultSet[0] = 0;
 
-    resultSet = (int *) palloc(numOfSameElements);//感觉没错
-    sets_intersection(A, B, resultSet);
+        result = (intSet *)palloc(VARHDRSZ + 1*sizeof(int) + sizeof(int) + sizeof(int));
+        SET_VARSIZE(result,VARHDRSZ + 1*sizeof(int)+sizeof(int)+sizeof(int));
 
-    for (int j = 0; j < numOfSameElements; ++j) {
-        result.iset[j] = resultSet[j];
+        memcpy(result->iset, resultSet, 1*sizeof(int));
+    }
+    else{
+        resultSet = (int *) palloc(numOfSameElements * sizeof(int));//
+
+        result = (intSet *)palloc(VARHDRSZ + numOfSameElements*sizeof(int) + sizeof(int) + sizeof(int));
+        SET_VARSIZE(result,VARHDRSZ + numOfSameElements*sizeof(int)+sizeof(int)+sizeof(int));
+
+        sets_intersection(A, B, resultSet);
+        memcpy(result->iset, resultSet, numOfSameElements*sizeof(int));
     }
 
+    result->numOfIntegers = numOfSameElements;
 
-    pointerOfResult = &result;
+    if (numOfSameElements > 0){
+        result->lengthOfIntSetSting = numOfSameElements + numOfSameElements + 1;
+    }
+    else{
+        result->lengthOfIntSetSting = 2;
+    }
 
-    PG_RETURN_POINTER(pointerOfResult);
+//    for (int j = 0; j < numOfSameElements; ++j) {
+//        result.iset[j] = resultSet[j];
+//    }
+
+//    pointerOfResult = &result;
+
+    PG_RETURN_POINTER(result);
 }
 
 //Operator: ||
@@ -552,48 +560,56 @@ intset_union(PG_FUNCTION_ARGS)
 {
     intSet   *A = (intSet *) PG_GETARG_POINTER(0);
     intSet   *B = (intSet *) PG_GETARG_POINTER(1);
-    intSet result;
-    int numOfSameElements;
-    int lengthOfDifferenceSet;
+    intSet   *result;
+    int numOfSameElements = 0;
+    int lengthOfDifferenceSet = 0;
     int *differenceSet;
 //    int *resultTemp;
-    int lengthOfResultSet;
+    int numOfResultSet = 0;
     int *resultSet;
-    intSet *pointerOfResult;
+//    intSet *pointerOfResult;
 
     numOfSameElements = num_of_same_elements(A, B);
 
-    //先求差集
-
     lengthOfDifferenceSet = A->numOfIntegers - numOfSameElements;
+    numOfResultSet = A->numOfIntegers - numOfSameElements + B->numOfIntegers;
 
-    differenceSet = (int *) palloc(lengthOfDifferenceSet);//应该没错
+    if (numOfResultSet == 0){
+        resultSet = (int*) palloc(1*sizeof(int));
+        resultSet[0] = 0;
 
-    sets_difference(A, B, differenceSet);//resultTemp数组存的是差集
+        result = (intSet *)palloc(VARHDRSZ + 1*sizeof(int) + sizeof(int) + sizeof(int));
+        SET_VARSIZE(result,VARHDRSZ + 1*sizeof(int)+sizeof(int)+sizeof(int));
 
-
-
-    lengthOfResultSet = A->numOfIntegers - numOfSameElements + B->numOfIntegers;
-    result.numOfIntegers = lengthOfResultSet;
-    result.lengthOfIntSetSting = lengthOfResultSet + lengthOfResultSet + 2;
-
-    //将差集与集合B合到一起便是并集
-
-    resultSet = (int*) palloc(lengthOfResultSet);
-    for (int i = 0; i < B->numOfIntegers; ++i) {
-        resultSet[i] = B->iset[i];
+        memcpy(result->iset, resultSet, 1*sizeof(int));
     }
-    for (int i = 0; i < lengthOfDifferenceSet; ++i) {
-        resultSet[B->numOfIntegers+i] = differenceSet[i];
+    else{
+        differenceSet = (int *) palloc(lengthOfDifferenceSet*sizeof(int));//应该没错
+        sets_difference(A, B, differenceSet);//resultTemp数组存的是差集
+
+        resultSet = (int*) palloc(numOfResultSet*sizeof(int));
+        for (int i = 0; i < B->numOfIntegers; ++i) {
+            resultSet[i] = B->iset[i];
+        }
+        for (int i = 0; i < lengthOfDifferenceSet; ++i) {
+            resultSet[B->numOfIntegers+i] = differenceSet[i];
+        }
+        qsort(resultSet, numOfResultSet, sizeof(int), cmp_num);
+
+        result = (intSet *) palloc(VARHDRSZ + numOfResultSet*sizeof(int) + sizeof(int) + sizeof(int));
+        SET_VARSIZE(result,VARHDRSZ + numOfResultSet*sizeof(int)+sizeof(int)+sizeof(int));
+        memcpy(result->iset, resultSet, numOfResultSet*sizeof(int));//自己测试感觉是这里有问题
     }
-    for (int j = 0; j < lengthOfResultSet; ++j) {
-        result.iset[j] = resultSet[j];
+
+    result->numOfIntegers = numOfResultSet;
+    if (numOfResultSet > 0){
+        result->lengthOfIntSetSting = numOfResultSet + numOfResultSet + 1;
+    }
+    else{
+        result->lengthOfIntSetSting = 2;
     }
 
-
-    pointerOfResult = &result;
-
-    PG_RETURN_POINTER(pointerOfResult);
+    PG_RETURN_POINTER(result);
 }
 
 //Operator: ！！
